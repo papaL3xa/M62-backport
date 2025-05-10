@@ -109,6 +109,10 @@ d2x)
     BOARD=SRPSC14C009KU
     SOC=exynos9825
 ;;
+d2xks)
+    BOARD=SRPSC14C009KU
+    SOC=exynos9825
+;;
 *)
     unset_flags
     exit
