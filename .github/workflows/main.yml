@@ -1,0 +1,99 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:      
+      tag:
+        description: 'Release Tag'
+        required: true 
+      setup_choice:
+        description: "choice Kernelsu version"
+        required: true
+        type: choice
+        options:
+          - ShirkNeko
+          - Kernelsu-next
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        device: [d1, d1xks, d2x, d2s, d2xks]
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: "⏰Set Time Zone to Beijing"
+        run: |
+          sudo timedatectl set-timezone "Asia/Shanghai"
+
+      - name: "🚄Set up build environment"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl git
+
+      - name: "⭐Checkout repository with submodules"
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: "💡 Setup KernelSu"
+        run: |
+          if [ -d "./KernelSU-Next" ]; then rm -rf "./KernelSU-Next"; fi
+          if [ -d "./drivers/KernelSU-Next" ]; then rm -rf "./drivers/KernelSU-Next"; fi 
+          if [[ ${{ inputs.setup_choice }} == "ShirkNeko" ]]; then
+          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/KernelSU/main/kernel/setup.sh" | bash -s susfs-stable
+          else
+          curl -LSs "https://raw.githubusercontent.com/Star-Seven/KernelSU-Next/next/kernel/setup.sh" | bash -s next-susfs
+          fi
+        shell: bash
+
+      - name: "😄 Setup and Apply susfs4ksu Patches"
+        run: |
+           set -e
+
+           git clone https://github.com/Star-Seven/susfs4ksu -b M62-backport susfs4ksu-repo
+
+           #cp susfs4ksu-repo/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU-Next/
+           cp susfs4ksu-repo/kernel_patches/fs/* fs/
+           cp susfs4ksu-repo/kernel_patches/include/linux/* include/linux/
+           #cd ./KernelSU-Next
+           #patch -p1 -F 3 < 10_enable_susfs_for_ksu.patch || { echo "Failed to apply patch"; exit 1; }
+           #cd ..
+           patch -p1 --verbose < susfs4ksu-repo/kernel_patches/50_add_susfs_in_kernel-4.14.patch
+           patch -p1 --verbose < susfs4ksu-repo/kernel_patches/BACKPORT-fs-upstream-susfs-v1.5.7-new-non-gki.patch
+           echo "Successfully applied susfs4ksu patches"
+
+      - name: "🐎Build for specific device"
+        run: ./build.sh -m ${{ matrix.device }} -k y
+
+      - name: "💫Prepare ZIP files for upload"
+        run: |
+          mkdir -p ${{ github.workspace }}/build/out/zip_files
+          find ${{ github.workspace }}/build/out/ -type f -name "*.zip" -exec cp {} ${{ github.workspace }}/build/out/zip_files/ \;
+
+      - name: "😎Upload ZIP files as artifact"
+        uses: actions/upload-artifact@v4
+        with:
+         name: "ExtremeKRNL-Nexus-Susfs-${{ matrix.device }}"
+         path: ${{ github.workspace }}/build/out/zip_files/
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: "⭐Download all artifacts"
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: "❤️ Create release"
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.event.inputs.tag }}
+          name: "ExtremeKRNL-Nexus-Susfs-${{ github.event.inputs.tag }}"
+          draft: false
+          prerelease: false        
+          artifacts: "artifacts/**/*.zip"
+          body: " Commit SHA: ${{ github.sha }}\n\n**Installation:**\n- Flash the kernel.\n- Download and install KernelSU Next Manager APK from：[KernelSU-Next](https://github.com/rifsxd/KernelSU-Next/releases/latest)\n- Download and install the SuSFS module from：[ksu_module_susfs](https://github.com/sidex15/susfs4ksu-module/releases/latest)"
