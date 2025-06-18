@@ -29,7 +29,8 @@ jobs:
       - name: "🚄Set up build environment"
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential curl git
+          sudo apt-get install -y git-core flex bison build-essential zip curl \
+          zlib1g-dev libc6-dev-i386 lib32z1-dev unzip
 
       - name: "⭐Checkout repository with submodules"
         uses: actions/checkout@v4
@@ -43,7 +44,7 @@ jobs:
           if [[ ${{ inputs.setup_choice }} == "ShirkNeko" ]]; then
           curl -LSs "https://raw.githubusercontent.com/ShirkNeko/KernelSU/main/kernel/setup.sh" | bash -s susfs-stable
           else
-          curl -LSs "https://raw.githubusercontent.com/Star-Seven/KernelSU-Next/next/kernel/setup.sh" | bash -s next-susfs
+          curl -LSs "https://raw.githubusercontent.com/Star-Seven/KernelSU-Next/next/kernel/setup.sh" | bash -
           fi
         shell: bash
 
@@ -53,12 +54,12 @@ jobs:
 
            git clone https://github.com/Star-Seven/susfs4ksu -b M62-backport susfs4ksu-repo
 
-           #cp susfs4ksu-repo/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU-Next/
+           cp susfs4ksu-repo/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU-Next/
            cp susfs4ksu-repo/kernel_patches/fs/* fs/
            cp susfs4ksu-repo/kernel_patches/include/linux/* include/linux/
-           #cd ./KernelSU-Next
-           #patch -p1 -F 3 < 10_enable_susfs_for_ksu.patch || { echo "Failed to apply patch"; exit 1; }
-           #cd ..
+           cd ./KernelSU-Next
+           patch -p1 -F 3 < 10_enable_susfs_for_ksu.patch || { echo "Failed to apply patch"; exit 1; }
+           cd ..
            patch -p1 --verbose < susfs4ksu-repo/kernel_patches/50_add_susfs_in_kernel-4.14.patch
            patch -p1 --verbose < susfs4ksu-repo/kernel_patches/BACKPORT-fs-upstream-susfs-v1.5.7-new-non-gki.patch
            echo "Successfully applied susfs4ksu patches"
@@ -96,4 +97,4 @@ jobs:
           draft: false
           prerelease: false        
           artifacts: "artifacts/**/*.zip"
-          body: " Commit SHA: ${{ github.sha }}\n\n**Installation:**\n- Flash the kernel.\n- Download and install KernelSU Next Manager APK from：[KernelSU-Next](https://github.com/rifsxd/KernelSU-Next/releases/latest)\n- Download and install the SuSFS module from：[ksu_module_susfs](https://github.com/sidex15/susfs4ksu-module/releases/latest)"
+          body: " Commit SHA: ${{ github.sha }}\n\n**Installation:**\n- Flash the kernel.\n- Download and install KernelSU Next Manager APK from：[KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next/releases/latest)\n- Download and install the SuSFS module from：[ksu_module_susfs](https://github.com/sidex15/susfs4ksu-module/releases/latest)"
