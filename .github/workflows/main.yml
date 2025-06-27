@@ -36,7 +36,8 @@ jobs:
         run: |
            set -e
 
-           git clone https://github.com/Star-Seven/susfs4ksu -b M62-backport susfs4ksu-repo
+           # Backport SUSFS v1.5.8 to Linux 4.14
+           git clone https://github.com/Star-Seven/susfs4ksu -b M62-backport-1.5.8 susfs4ksu-repo
 
            cp susfs4ksu-repo/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU-Next/
            cp susfs4ksu-repo/kernel_patches/fs/* fs/
@@ -45,7 +46,6 @@ jobs:
            patch -p1 -F 3 < 10_enable_susfs_for_ksu.patch || { echo "Failed to apply patch"; exit 1; }
            cd ..
            patch -p1 --verbose < susfs4ksu-repo/kernel_patches/50_add_susfs_in_kernel-4.14.patch
-           patch -p1 --verbose < susfs4ksu-repo/kernel_patches/BACKPORT-fs-upstream-susfs-v1.5.7-new-non-gki.patch
            echo "Successfully applied susfs4ksu patches"
 
       - name: "🐎Build for specific device"
