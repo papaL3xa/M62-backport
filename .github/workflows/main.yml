@@ -36,8 +36,8 @@ jobs:
         run: |
            set -e
 
-           # Backport SUSFS v1.5.8 to Linux 4.14
-           git clone https://github.com/Star-Seven/susfs4ksu -b M62-backport-1.5.8 susfs4ksu-repo
+           # Backport SUSFS to Linux 4.14
+           git clone https://github.com/Star-Seven/susfs4ksu -b M62-backport-1.5.9 susfs4ksu-repo
 
            cp susfs4ksu-repo/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU-Next/
            cp susfs4ksu-repo/kernel_patches/fs/* fs/
