@@ -65,7 +65,7 @@ jobs:
            echo "Successfully applied susfs4ksu patches"
 
       - name: "🐎Build for specific device"
-        run: ./build.sh -m ${{ matrix.device }} -k y
+        run: ./build.sh -m ${{ matrix.device }} -k Y -r N
 
       - name: "💫Prepare ZIP files for upload"
         run: |
