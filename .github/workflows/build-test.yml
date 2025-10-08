@@ -3,8 +3,8 @@ name: Build-Test
 on:
   workflow_dispatch:
     inputs:
-      devices:
-        description: 'Devices'
+      device:
+        description: 'Select device to build'
         required: true
         default: 'd1'
         type: choice
@@ -16,11 +16,11 @@ on:
 
 jobs:
   build:
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
-        device: [${{ github.event.inputs.devices }}]
-    runs-on: ubuntu-24.04
-
+        include:
+          - device: ${{ github.event.inputs.device }}
     steps:
       - name: "⏰Set Time Zone to Asia"
         run: |
