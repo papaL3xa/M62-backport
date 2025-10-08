@@ -18,7 +18,7 @@ jobs:
   build:
     strategy:
       matrix:
-        device: ${{ github.event.inputs.devices }}
+        device: [${{ github.event.inputs.devices }}]
     runs-on: ubuntu-24.04
 
     steps:
