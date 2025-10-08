@@ -1,0 +1,74 @@
+name: Build-Test
+
+on:
+  workflow_dispatch:
+  inputs:
+  devices:
+        description: 'Devices'
+        required: true
+        default: '["d1"]'
+        type: choice
+        options: 
+          - [d1]
+          - [d1xks]
+          - [d2s]
+          - [d2x]
+          
+jobs:
+  build:
+    strategy:
+      matrix:
+        device: ${{ fromJSON(github.event.inputs.devices) }}
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: "⏰Set Time Zone to Asia"
+        run: |
+          sudo timedatectl set-timezone "Asia/Jakarta"
+
+      - name: "🚄Set up build environment"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git-core flex bison build-essential zip curl \
+          zlib1g-dev libc6-dev-i386 lib32z1-dev unzip
+
+      - name: "⭐Checkout repository with submodules"
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: "💡 Setup KernelSu"
+        run: |
+          if [ -d "./KernelSU-Next" ]; then rm -rf "./KernelSU-Next"; fi
+          if [ -d "./drivers/KernelSU-Next" ]; then rm -rf "./drivers/KernelSU-Next"; fi 
+          curl -LSs "https://raw.githubusercontent.com/Star-Seven/KernelSU-Next/next/kernel/setup.sh" | bash -
+
+      - name: "😄 Setup and Apply susfs4ksu Patches"
+        run: |
+           set -e
+
+           # Backport SUSFS to Linux 4.14
+           git clone https://github.com/Star-Seven/susfs4ksu -b M62-backport-1.5.9 susfs4ksu-repo
+
+           cp susfs4ksu-repo/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU-Next/
+           cp susfs4ksu-repo/kernel_patches/fs/* fs/
+           cp susfs4ksu-repo/kernel_patches/include/linux/* include/linux/
+           cd ./KernelSU-Next
+           patch -p1 -F 3 < 10_enable_susfs_for_ksu.patch || { echo "Failed to apply patch"; exit 1; }
+           cd ..
+           patch -p1 --verbose < susfs4ksu-repo/kernel_patches/50_add_susfs_in_kernel-4.14.patch
+           echo "Successfully applied susfs4ksu patches"
+
+      - name: "🐎Build for specific device"
+        run: ./build.sh -m ${{ matrix.device }} -k Y -r N
+
+      - name: "💫Prepare ZIP files for upload"
+        run: |
+          mkdir -p ${{ github.workspace }}/build/out/zip_files
+          find ${{ github.workspace }}/build/out/ -type f -name "*.zip" -exec cp {} ${{ github.workspace }}/build/out/zip_files/ \;
+
+      - name: "😎Upload ZIP files as artifact"
+        uses: actions/upload-artifact@v4
+        with:
+         name: "ExtremeKRNL-Nexus-Susfs-${{ matrix.device }}"
+         path: ${{ github.workspace }}/build/out/zip_files/
