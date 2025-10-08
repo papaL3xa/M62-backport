@@ -35,7 +35,6 @@ on:
     tags:
       - 'v*'
 
-# TAMBAH permissions di sini
 permissions:
   contents: write
   actions: read
@@ -129,35 +128,51 @@ jobs:
           name: "ExtremeKRNL-Nexus-Susfs-${{ matrix.device }}"
           path: ${{ github.workspace }}/build/out/zip_files/
 
-  # DEBUG job untuk melihat apa yang terjadi
-  debug-info:
+  # DEBUG JOB - WAJIB untuk troubleshoot
+  debug-trigger:
     runs-on: ubuntu-24.04
     needs: build
     steps:
-      - name: "🐛 Debug Information"
+      - name: "🔍 Debug Trigger Information"
         run: |
-          echo "=== DEBUG INFO ==="
+          echo "=== TRIGGER DEBUG ==="
           echo "Event: ${{ github.event_name }}"
           echo "Ref: ${{ github.ref }}"
           echo "SHA: ${{ github.sha }}"
           echo "Workflow: ${{ github.workflow }}"
-          echo "Should create release: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}"
-          echo "Manual release: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'yes' }}"
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Run Number: ${{ github.run_number }}"
+          echo "Actor: ${{ github.actor }}"
+          
+          echo ""
+          echo "=== MANUAL INPUTS ==="
+          echo "Build Type: ${{ github.event.inputs.build_type }}"
+          echo "Device: ${{ github.event.inputs.device }}"
+          echo "Create Release: ${{ github.event.inputs.create_release }}"
+          
+          echo ""
+          echo "=== RELEASE CONDITIONS ==="
+          echo "Push to main/master: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}"
+          echo "Manual with release: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'yes' }}"
+          echo "Push tag: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}"
+          
+          echo ""
+          echo "=== FINAL DECISION ==="
+          echo "Should run release job: ${{ (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'yes') }}"
 
   release:
     name: Create Release
-    needs: [build, debug-info]
+    needs: [build, debug-trigger]
     runs-on: ubuntu-24.04
     
-    # CONDITION YANG LEBIH SEDERHANA
-    if: |
-      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'yes')
+    # CONDITION YANG LEBIH EXPLICIT
+    if: ${{ (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'yes') }}
     
     steps:
-      - name: "🐛 Debug Release Condition"
+      - name: "🎯 Release Job Started"
         run: |
-          echo "Release job is running because:"
+          echo "✅ RELEASE JOB IS RUNNING!"
+          echo "This means the condition passed:"
           echo "Event: ${{ github.event_name }}"
           echo "Ref: ${{ github.ref }}"
           echo "Create Release Input: ${{ github.event.inputs.create_release }}"
@@ -170,33 +185,34 @@ jobs:
       - name: "📦 Prepare release assets"
         run: |
           mkdir -p release_assets
-          # Collect all zip files from artifacts
           find artifacts -name "*.zip" -type f -exec cp {} release_assets/ \;
-          echo "Assets prepared for release:"
+          echo "Assets for release:"
           ls -la release_assets/
-          echo "Total files: $(ls -1 release_assets/ | wc -l)"
+          echo "Total ZIP files: $(ls -1 release_assets/ | wc -l)"
           
       - name: "🏷️ Generate Release Version"
         id: version
         run: |
+          TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          
           if [ "${{ github.event_name }}" == "push" ]; then
-            # Untuk push ke branch
-            TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
-            SHORT_SHA="${{ github.sha }}"
-            SHORT_SHA="${SHORT_SHA:0:7}"
-            VERSION="auto-${TIMESTAMP}-${SHORT_SHA}"
-            TAG_NAME="${VERSION}"
-            RELEASE_NAME="Auto Build ${TIMESTAMP}"
+            if [ "${{ github.ref }}" == "refs/heads/main" ] || [ "${{ github.ref }}" == "refs/heads/master" ]; then
+              VERSION="auto-${TIMESTAMP}-${SHORT_SHA}"
+              RELEASE_NAME="Auto Build ${TIMESTAMP}"
+            else
+              VERSION="tag-${TIMESTAMP}"
+              RELEASE_NAME="Tag Build ${TIMESTAMP}"
+            fi
           else
-            # Untuk manual dispatch
-            TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
-            VERSION="manual-${TIMESTAMP}"
-            TAG_NAME="${VERSION}"
+            VERSION="manual-${TIMESTAMP}-${{ github.run_number }}"
             RELEASE_NAME="Manual Build ${TIMESTAMP}"
           fi
-          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
+          
+          echo "tag_name=${VERSION}" >> $GITHUB_OUTPUT
           echo "release_name=${RELEASE_NAME}" >> $GITHUB_OUTPUT
-          echo "Generated version: ${TAG_NAME}"
+          echo "🎯 Generated: ${VERSION}"
           
       - name: "🚀 Create GitHub Release"
         uses: softprops/action-gh-release@v1
@@ -207,46 +223,41 @@ jobs:
           name: ${{ steps.version.outputs.release_name }}
           files: release_assets/*.zip
           generate_release_notes: true
-          draft: false
-          prerelease: false
           body: |
-            ## 🎉 ExtremeKRNL Nexus Susfs Build
+            ## 🎉 ExtremeKRNL Nexus Susfs
             
-            ### 📋 Build Information
+            ### 📋 Build Info
             - **Version:** ${{ steps.version.outputs.tag_name }}
             - **Build Date:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')
             - **Trigger:** ${{ github.event_name }}
-            - **Commit:** ${{ github.sha }}
-            - **KernelSU:** Next Integration
-            - **SUSFS:** Backport 1.5.9 Applied
+            - **Workflow Run:** #${{ github.run_number }}
             
-            ### 📱 Supported Devices
+            ### 📱 Devices
             - d1, d1xks, d2s, d2x
             
             ### ⚡ Features
-            - ✅ KernelSU Next support
-            - ✅ SUSFS4KSU integration  
-            - ✅ Enhanced performance
-            - ✅ Security patches
-            
-            ### 📥 Installation
-            1. Download ZIP file for your device
-            2. Flash via custom recovery
-            3. Wipe cache/dalvik
-            4. Reboot
+            - KernelSU Next + SUSFS4KSU
             
             ---
-            *Automatically built via GitHub Actions*
+            *Created by GitHub Actions Run #${{ github.run_number }}*
+
+      - name: "✅ Release Created Successfully"
+        run: |
+          echo "🎉 RELEASE CREATED: ${{ steps.version.outputs.tag_name }}"
+          echo "📝 This release was created by THIS workflow run"
+          echo "🔗 Check: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag_name }}"
 
   no-release:
     runs-on: ubuntu-24.04
-    needs: build
-    if: |
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'no') ||
-      (github.event_name == 'push' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/'))
+    needs: [build, debug-trigger]
+    if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'no') || (github.event_name == 'push' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')) }}
+    
     steps:
-      - name: "📋 Build Summary (No Release)"
+      - name: "📋 No Release Summary"
         run: |
-          echo "✅ Build completed successfully!"
-          echo "🚫 No release created (as requested)"
+          echo "✅ Build completed - NO RELEASE CREATED"
           echo "📦 Artifacts available in Actions tab"
+          echo ""
+          echo "Why no release?"
+          echo "- Manual with release=no: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'no' }}"
+          echo "- Push to other branch: ${{ github.event_name == 'push' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/') }}"
