@@ -1,4 +1,4 @@
-name: Build-Release
+name: Build-Test
 
 on:
   workflow_dispatch:
@@ -35,8 +35,6 @@ jobs:
           - d1xks
           - d2s
           - d2x
-    # Skip matrix for single device build
-    continue-on-error: false
 
     steps:
       - name: "⏰Set Time Zone to Asia"
@@ -120,7 +118,8 @@ jobs:
     name: Create Release
     needs: build
     runs-on: ubuntu-24.04
-    if: startsWith(github.ref, 'refs/tags/')
+    # Hanya jalankan jika push tag
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     
     steps:
       - name: "📥 Download build artifacts"
@@ -174,3 +173,23 @@ jobs:
             
             ---
             *Built automatically with GitHub Actions • [Report Issues](https://github.com/${{ github.repository }}/issues)*
+
+  manual-build-summary:
+    runs-on: ubuntu-24.04
+    needs: build
+    # Hanya jalankan untuk manual dispatch (bukan tag push)
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: "📋 Manual Build Summary"
+        run: |
+          echo "✅ Build completed successfully!"
+          echo "📦 Build Type: ${{ github.event.inputs.build_type || 'all' }}"
+          echo "📱 Device(s): ${{ github.event.inputs.device || 'All devices (d1, d1xks, d2s, d2x)' }}"
+          echo "⏰ Trigger: Manual workflow dispatch"
+          echo ""
+          echo "📥 Artifacts are available in the Actions tab for manual download"
+          echo "🔗 GitHub Actions URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo ""
+          echo "💡 To create an automatic release, push a tag:"
+          echo "   git tag v1.0.0"
+          echo "   git push origin v1.0.0"
