@@ -21,7 +21,7 @@ on:
           - d1xks
           - d2s
           - d2x
-      auto_release:
+      create_release:
         description: 'Create automatic release?'
         required: true
         default: 'yes'
@@ -30,11 +30,15 @@ on:
           - yes
           - no
 
-  # TAMBAH trigger untuk push ke branch main
   push:
-    branches: [ main ]
+    branches: [ main, master ]
     tags:
       - 'v*'
+
+# TAMBAH permissions di sini
+permissions:
+  contents: write
+  actions: read
 
 jobs:
   build:
@@ -125,26 +129,39 @@ jobs:
           name: "ExtremeKRNL-Nexus-Susfs-${{ matrix.device }}"
           path: ${{ github.workspace }}/build/out/zip_files/
 
-      - name: "🏷️ Generate Auto Version"
-        id: version
+  # DEBUG job untuk melihat apa yang terjadi
+  debug-info:
+    runs-on: ubuntu-24.04
+    needs: build
+    steps:
+      - name: "🐛 Debug Information"
         run: |
-          # Generate version berdasarkan timestamp
-          TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          VERSION="auto-${TIMESTAMP}-${SHORT_SHA}"
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "Generated version: ${VERSION}"
+          echo "=== DEBUG INFO ==="
+          echo "Event: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "SHA: ${{ github.sha }}"
+          echo "Workflow: ${{ github.workflow }}"
+          echo "Should create release: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}"
+          echo "Manual release: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'yes' }}"
 
   release:
     name: Create Release
-    needs: build
+    needs: [build, debug-info]
     runs-on: ubuntu-24.04
-    # PERUBAHAN PENTING: Jalankan untuk push main DAN manual dengan auto_release=yes
+    
+    # CONDITION YANG LEBIH SEDERHANA
     if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.auto_release == 'yes')
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'yes')
     
     steps:
+      - name: "🐛 Debug Release Condition"
+        run: |
+          echo "Release job is running because:"
+          echo "Event: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Create Release Input: ${{ github.event.inputs.create_release }}"
+          
       - name: "📥 Download build artifacts"
         uses: actions/download-artifact@v4
         with:
@@ -159,37 +176,44 @@ jobs:
           ls -la release_assets/
           echo "Total files: $(ls -1 release_assets/ | wc -l)"
           
-      - name: "🏷️ Determine Release Version"
-        id: vars
+      - name: "🏷️ Generate Release Version"
+        id: version
         run: |
           if [ "${{ github.event_name }}" == "push" ]; then
-            # Untuk push ke main, gunakan auto version
+            # Untuk push ke branch
             TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
-            SHORT_SHA=$(git rev-parse --short HEAD)
+            SHORT_SHA="${{ github.sha }}"
+            SHORT_SHA="${SHORT_SHA:0:7}"
             VERSION="auto-${TIMESTAMP}-${SHORT_SHA}"
             TAG_NAME="${VERSION}"
-            RELEASE_NAME="Auto Release ${VERSION}"
+            RELEASE_NAME="Auto Build ${TIMESTAMP}"
           else
-            # Untuk manual dengan release, gunakan custom name
-            VERSION="manual-${{ github.run_id }}"
+            # Untuk manual dispatch
+            TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
+            VERSION="manual-${TIMESTAMP}"
             TAG_NAME="${VERSION}"
-            RELEASE_NAME="Manual Release ${{ github.run_id }}"
+            RELEASE_NAME="Manual Build ${TIMESTAMP}"
           fi
           echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
           echo "release_name=${RELEASE_NAME}" >> $GITHUB_OUTPUT
+          echo "Generated version: ${TAG_NAME}"
           
       - name: "🚀 Create GitHub Release"
         uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ steps.vars.outputs.tag_name }}
-          name: ${{ steps.vars.outputs.release_name }}
+          tag_name: ${{ steps.version.outputs.tag_name }}
+          name: ${{ steps.version.outputs.release_name }}
           files: release_assets/*.zip
           generate_release_notes: true
+          draft: false
+          prerelease: false
           body: |
-            ## 🎉 ExtremeKRNL Nexus Susfs - Automatic Build
+            ## 🎉 ExtremeKRNL Nexus Susfs Build
             
             ### 📋 Build Information
-            - **Version:** ${{ steps.vars.outputs.tag_name }}
+            - **Version:** ${{ steps.version.outputs.tag_name }}
             - **Build Date:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')
             - **Trigger:** ${{ github.event_name }}
             - **Commit:** ${{ github.sha }}
@@ -204,35 +228,25 @@ jobs:
             - ✅ SUSFS4KSU integration  
             - ✅ Enhanced performance
             - ✅ Security patches
-            - ✅ Custom optimizations
             
-            ### 📥 Installation Guide
-            1. Download the appropriate ZIP file for your device
-            2. Flash via custom recovery (OrangeFox, TWRP)
+            ### 📥 Installation
+            1. Download ZIP file for your device
+            2. Flash via custom recovery
             3. Wipe cache/dalvik
-            4. Reboot system
-            
-            ### ⚠️ Important Notes
-            - 🔄 Make sure to backup your data before flashing
-            - 📲 Use compatible firmware version
-            - 🔧 Report issues with proper logs
+            4. Reboot
             
             ---
-            *Built automatically with GitHub Actions • [Report Issues](https://github.com/${{ github.repository }}/issues)*
+            *Automatically built via GitHub Actions*
 
-  manual-build-summary:
+  no-release:
     runs-on: ubuntu-24.04
     needs: build
-    # Hanya jalankan untuk manual dispatch TANPA release
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.auto_release == 'no'
+    if: |
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'no') ||
+      (github.event_name == 'push' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/'))
     steps:
-      - name: "📋 Manual Build Summary"
+      - name: "📋 Build Summary (No Release)"
         run: |
           echo "✅ Build completed successfully!"
-          echo "📦 Build Type: ${{ github.event.inputs.build_type || 'all' }}"
-          echo "📱 Device(s): ${{ github.event.inputs.device || 'All devices (d1, d1xks, d2s, d2x)' }}"
-          echo "🔕 Release: Disabled (auto_release=no)"
-          echo "⏰ Trigger: Manual workflow dispatch"
-          echo ""
-          echo "📥 Artifacts are available in the Actions tab for manual download"
-          echo "🔗 GitHub Actions URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "🚫 No release created (as requested)"
+          echo "📦 Artifacts available in Actions tab"
