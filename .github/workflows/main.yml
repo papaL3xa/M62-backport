@@ -11,9 +11,9 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      - name: "⏰Set Time Zone to Beijing"
+      - name: "⏰Set Time Zone to Indonesia"
         run: |
-          sudo timedatectl set-timezone "Asia/Shanghai"
+          sudo timedatectl set-timezone "Asia/Jakarta"
 
       - name: "🚄Set up build environment"
         run: |
