@@ -21,9 +21,20 @@ on:
           - d1xks
           - d2s
           - d2x
+      auto_release:
+        description: 'Create automatic release?'
+        required: true
+        default: 'yes'
+        type: choice
+        options:
+          - yes
+          - no
+
+  # TAMBAH trigger untuk push ke branch main
   push:
+    branches: [ main ]
     tags:
-      - 'v1.0.0'
+      - 'v*'
 
 jobs:
   build:
@@ -114,12 +125,24 @@ jobs:
           name: "ExtremeKRNL-Nexus-Susfs-${{ matrix.device }}"
           path: ${{ github.workspace }}/build/out/zip_files/
 
+      - name: "🏷️ Generate Auto Version"
+        id: version
+        run: |
+          # Generate version berdasarkan timestamp
+          TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          VERSION="auto-${TIMESTAMP}-${SHORT_SHA}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Generated version: ${VERSION}"
+
   release:
     name: Create Release
     needs: build
     runs-on: ubuntu-24.04
-    # Hanya jalankan jika push tag
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    # PERUBAHAN PENTING: Jalankan untuk push main DAN manual dengan auto_release=yes
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.auto_release == 'yes')
     
     steps:
       - name: "📥 Download build artifacts"
@@ -136,17 +159,40 @@ jobs:
           ls -la release_assets/
           echo "Total files: $(ls -1 release_assets/ | wc -l)"
           
+      - name: "🏷️ Determine Release Version"
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" == "push" ]; then
+            # Untuk push ke main, gunakan auto version
+            TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
+            SHORT_SHA=$(git rev-parse --short HEAD)
+            VERSION="auto-${TIMESTAMP}-${SHORT_SHA}"
+            TAG_NAME="${VERSION}"
+            RELEASE_NAME="Auto Release ${VERSION}"
+          else
+            # Untuk manual dengan release, gunakan custom name
+            VERSION="manual-${{ github.run_id }}"
+            TAG_NAME="${VERSION}"
+            RELEASE_NAME="Manual Release ${{ github.run_id }}"
+          fi
+          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "release_name=${RELEASE_NAME}" >> $GITHUB_OUTPUT
+          
       - name: "🚀 Create GitHub Release"
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ steps.vars.outputs.tag_name }}
+          name: ${{ steps.vars.outputs.release_name }}
           files: release_assets/*.zip
           generate_release_notes: true
           body: |
-            ## 🎉 ExtremeKRNL Nexus Susfs Update
+            ## 🎉 ExtremeKRNL Nexus Susfs - Automatic Build
             
             ### 📋 Build Information
-            - **Version:** ${{ github.ref_name }}
+            - **Version:** ${{ steps.vars.outputs.tag_name }}
             - **Build Date:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')
+            - **Trigger:** ${{ github.event_name }}
+            - **Commit:** ${{ github.sha }}
             - **KernelSU:** Next Integration
             - **SUSFS:** Backport 1.5.9 Applied
             
@@ -177,19 +223,16 @@ jobs:
   manual-build-summary:
     runs-on: ubuntu-24.04
     needs: build
-    # Hanya jalankan untuk manual dispatch (bukan tag push)
-    if: github.event_name == 'workflow_dispatch'
+    # Hanya jalankan untuk manual dispatch TANPA release
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.auto_release == 'no'
     steps:
       - name: "📋 Manual Build Summary"
         run: |
           echo "✅ Build completed successfully!"
           echo "📦 Build Type: ${{ github.event.inputs.build_type || 'all' }}"
           echo "📱 Device(s): ${{ github.event.inputs.device || 'All devices (d1, d1xks, d2s, d2x)' }}"
+          echo "🔕 Release: Disabled (auto_release=no)"
           echo "⏰ Trigger: Manual workflow dispatch"
           echo ""
           echo "📥 Artifacts are available in the Actions tab for manual download"
           echo "🔗 GitHub Actions URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          echo ""
-          echo "💡 To create an automatic release, push a tag:"
-          echo "   git tag v1.0.0"
-          echo "   git push origin v1.0.0"
